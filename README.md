@@ -1,1 +1,1 @@
-Test case for a potentional bug with Netty 4.0.9-SNAPSHOT regarding `GenericProgressiveFutureListener.operationProgress`.
+Investigating chunking and streaming
