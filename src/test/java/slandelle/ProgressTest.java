@@ -2,7 +2,6 @@ package slandelle;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelProgressiveFuture;
 import io.netty.channel.ChannelProgressiveFutureListener;
@@ -40,6 +39,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -102,7 +102,7 @@ public class ProgressTest {
         tmpDir.mkdirs();
         tmpDir.deleteOnExit();
 
-        int repeats = (1024 * 1000 / PATTERN_BYTES.length) + 1;
+        int repeats = (1024 * 100 / PATTERN_BYTES.length) + 1;
         tmpFile = createTempFile(tmpDir, repeats);
 
         server = new Server();
@@ -172,7 +172,7 @@ public class ProgressTest {
             }
 
             channel.write(request);
-            ChannelFuture cf = channel.write(body, channel.newProgressivePromise())//
+            channel.write(body, channel.newProgressivePromise())//
                     .addListener(new ChannelProgressiveFutureListener() {
 
                         public void operationComplete(ChannelProgressiveFuture cf) {
@@ -187,20 +187,17 @@ public class ProgressTest {
                     });
             channel.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
 
-            cf.sync();
             latch.await();
 
-            // According to GenericProgressiveFutureListener.operationProgress, total is "the number that signifies the end of the operation when {@code progress} reaches at it",
-            // meaning that last progress value should be equal to total
-            // Assert.assertEquals("wrong last progress", expectedContentLength, lastProgress.get());
-            // Assert.assertEquals("wrong last total", expectedContentLength, lastTotal.get());
+            Assert.assertEquals("wrong last progress", expectedContentLength, lastProgress.get());
+            Assert.assertEquals("wrong last total", expectedContentLength, lastTotal.get());
 
         } finally {
             eventLoop.shutdownGracefully();
         }
     }
 
-//    @Test
+    @Test
     public void testFileUpload() throws Exception {
 
         RandomAccessFile raf = new RandomAccessFile(tmpFile, "r");
