@@ -11,6 +11,7 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultHttpRequest;
+import io.netty.handler.codec.http.HttpClientCodec;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
@@ -153,6 +154,7 @@ public class ProgressTest {
                 @Override
                 protected void initChannel(Channel ch) throws Exception {
                     ch.pipeline()//
+                            .addLast("http", new HttpClientCodec())//
                             .addLast("chunker", new ChunkedWriteHandler());
                 }
             });
@@ -200,7 +202,7 @@ public class ProgressTest {
         }
     }
 
-//    @Test
+    @Test
     public void testFileUpload() throws Exception {
 
         RandomAccessFile raf = new RandomAccessFile(tmpFile, "r");
