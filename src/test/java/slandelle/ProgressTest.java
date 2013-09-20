@@ -2,7 +2,8 @@ package slandelle;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelProgressiveFuture;
 import io.netty.channel.ChannelProgressiveFutureListener;
@@ -12,10 +13,13 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.handler.logging.LoggingHandler;
 import io.netty.handler.stream.ChunkedStream;
 import io.netty.handler.stream.ChunkedWriteHandler;
 
@@ -138,6 +142,35 @@ public class ProgressTest {
         return tmpFile;
     }
 
+    private static final class MyHandler extends ChannelInboundHandlerAdapter {
+
+        private final CountDownLatch latch;
+
+        public MyHandler(CountDownLatch latch) {
+            this.latch = latch;
+        }
+
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+
+            if (msg instanceof HttpResponse) {
+                HttpResponse response = (HttpResponse) msg;
+                System.err.println("response status = " + response.getStatus());
+            }
+
+            if (msg instanceof HttpContent) {
+                HttpContent content = (HttpContent) msg;
+                System.err.println("response chunk readableBytes=" + content.content().readableBytes());
+                System.err.flush();
+            }
+
+            if (msg instanceof LastHttpContent) {
+                System.err.println("response done");
+                latch.countDown();
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
 
     private void send(Object body, long contentLength, long expectedContentLength) throws Exception {
@@ -148,14 +181,17 @@ public class ProgressTest {
         final AtomicLong lastProgress = new AtomicLong();
         final AtomicLong lastTotal = new AtomicLong();
 
+        final LoggingHandler loggingHandler = new LoggingHandler();
+
         try {
             plainBootstrap.handler(new ChannelInitializer<Channel>() {
 
                 @Override
                 protected void initChannel(Channel ch) throws Exception {
                     ch.pipeline()//
+//                            .addLast("log", loggingHandler)//
                             .addLast("http", new HttpClientCodec())//
-                            .addLast("chunker", new ChunkedWriteHandler());
+                            .addLast("chunker", new ChunkedWriteHandler()).addLast("mine", new MyHandler(latch));
                 }
             });
 
@@ -174,22 +210,21 @@ public class ProgressTest {
             }
 
             channel.write(request);
-            ChannelFuture cf = channel.write(body, channel.newProgressivePromise())//
+            channel.write(body, channel.newProgressivePromise())//
                     .addListener(new ChannelProgressiveFutureListener() {
 
                         public void operationComplete(ChannelProgressiveFuture cf) {
-                            latch.countDown();
                         }
 
                         public void operationProgressed(ChannelProgressiveFuture future, long progress, long total) throws Exception {
                             System.out.println("progress=" + progress + ", total=" + total);
+                            System.out.flush();
                             lastProgress.set(progress);
                             lastTotal.set(total);
                         }
                     });
             channel.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT);
 
-            cf.sync();
             latch.await();
 
             // According to GenericProgressiveFutureListener.operationProgress, total is "the number that signifies the end of the operation when {@code progress} reaches at it",
@@ -202,7 +237,7 @@ public class ProgressTest {
         }
     }
 
-    @Test
+    // @Test
     public void testFileUpload() throws Exception {
 
         RandomAccessFile raf = new RandomAccessFile(tmpFile, "r");
